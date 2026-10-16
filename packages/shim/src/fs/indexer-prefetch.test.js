@@ -36,6 +36,26 @@ function makeCache() {
   };
 }
 
+function notes(count) {
+  const t = {};
+
+  for (let i = 0; i < count; i++) {
+    t[`Note${i}.md`] = { type: "file", size: 100 };
+  }
+
+  return t;
+}
+
+function answer(init) {
+  const files = {};
+
+  for (const p of JSON.parse(init.body).paths) {
+    files[p] = "content:" + p;
+  }
+
+  return { ok: true, json: async () => ({ files }) };
+}
+
 beforeEach(() => {
   fetchCalls = [];
   globalThis.fetch = vi.fn(async (url, init) => {
@@ -53,6 +73,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   delete globalThis.fetch;
   vi.restoreAllMocks();
 });
@@ -185,10 +206,13 @@ describe("prefetchVaultContent slicing", () => {
     expect(fetchCalls.length).toBe(0);
   });
 
-  it("resolves the priority promise even when a batch fails", async () => {
+  it("resolves the priority promise even when a batch fails every attempt", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     globalThis.fetch = vi.fn(async () => ({ ok: false, status: 500 }));
 
     const result = prefetchVaultContent("v", tree, makeCache());
+    await vi.runAllTimersAsync();
 
     await expect(result.priority).resolves.toBeUndefined();
   });
@@ -215,38 +239,59 @@ describe("prefetchVaultContent parallel batching", () => {
     expect(cache.store.size).toBe(120);
   });
 
-  it("caches the batches that landed before a mid-stream failure, without rejecting", async () => {
-    const many = {};
-
-    for (let i = 0; i < 120; i++) {
-      many[`Note${i}.md`] = { type: "file", size: 100 };
-    }
+  it("retries a batch that fails once, and caches every file", async () => {
+    vi.useFakeTimers();
+    const many = notes(120);
 
     let calls = 0;
     globalThis.fetch = vi.fn(async (url, init) => {
       calls++;
 
       if (calls === 2) {
-        return { ok: false, status: 500 };
+        return { ok: false, status: 502 };
       }
 
-      const paths = JSON.parse(init.body).paths;
-      const files = {};
-
-      for (const p of paths) {
-        files[p] = "content:" + p;
-      }
-
-      return { ok: true, json: async () => ({ files }) };
+      return answer(init);
     });
 
     const cache = makeCache();
     const result = prefetchVaultContent("v", many, cache);
+    await vi.runAllTimersAsync();
 
     await expect(result.bulk).resolves.toBeUndefined();
-    // The batches that landed before the failing one are cached; the failure abandons the rest.
-    expect(cache.store.size).toBeGreaterThan(0);
-    expect(cache.store.size).toBeLessThan(120);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(4);
+    expect(cache.store.size).toBe(120);
+  });
+
+  it("skips a batch that fails every attempt, and caches every other batch", async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const many = notes(150);
+
+    let failingAttempts = 0;
+    globalThis.fetch = vi.fn(async (url, init) => {
+      if (JSON.parse(init.body).paths.includes("Note50.md")) {
+        failingAttempts++;
+        return { ok: false, status: 502 };
+      }
+
+      return answer(init);
+    });
+
+    const cache = makeCache();
+    const result = prefetchVaultContent("v", many, cache);
+    await vi.runAllTimersAsync();
+
+    await expect(result.bulk).resolves.toBeUndefined();
+    expect(failingAttempts).toBe(4);
+    expect(cache.store.size).toBe(100);
+    expect(cache.store.has("Note0.md")).toBe(true);
+    expect(cache.store.has("Note50.md")).toBe(false);
+    expect(cache.store.has("Note149.md")).toBe(true);
+    expect(warn).toHaveBeenCalledWith(
+      "[ignis] Prefetch bulk batch failed:",
+      "batch-read failed: 502",
+    );
   });
 });
 
