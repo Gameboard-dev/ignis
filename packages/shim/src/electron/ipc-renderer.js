@@ -137,7 +137,8 @@ async function handleRequestUrl(requestId, request) {
 
 export const ipcRenderer = {
   send(channel, ...args) {
-    console.log("[shim:ipcRenderer] send:", channel, args);
+    // skip args, avoids leaking sensitive headers and fields
+    console.log("[shim:ipcRenderer] send:", channel);
 
     if (channel === "context-menu") {
       queueMicrotask(() =>
@@ -178,7 +179,7 @@ export const ipcRenderer = {
   },
 
   sendSync(channel, ...args) {
-    console.log("[shim:ipcRenderer] sendSync:", channel, args);
+    console.log("[shim:ipcRenderer] sendSync:", channel);
 
     if (syncHandlers[channel]) {
       return syncHandlers[channel](...args);
