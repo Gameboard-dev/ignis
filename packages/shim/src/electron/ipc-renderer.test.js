@@ -31,6 +31,21 @@ function requestUrl(request) {
   });
 }
 
+describe("a requestUrl call through IPC", () => {
+  it("sends its contentType as a Content-Type header", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await requestUrl({
+      url: "https://api.example.test/annotations",
+      method: "POST",
+      contentType: "application/json",
+      body: "{}",
+    });
+
+    expect(proxied[0].headers).toEqual({ "Content-Type": "application/json" });
+  });
+});
+
 describe("the request-url log line", () => {
   it("names the channel without the request's headers or body", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
