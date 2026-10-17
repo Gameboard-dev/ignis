@@ -21,7 +21,7 @@ const TEXT_EXTENSIONS = new Set([
   ".svg",
 ]);
 
-const MAX_FILE_BYTES = 512 * 1024;
+export const MAX_FILE_BYTES = 512 * 1024;
 
 // Plugin bundles run a few MB and Obsidian needs them at boot, so priority accepts larger files than bulk.
 const PRIORITY_MAX_FILE_BYTES = 4 * 1024 * 1024;
@@ -36,7 +36,7 @@ const PREFETCH_MAX_BYTES = 100 * 1024 * 1024; // ceiling on boot prefetch I/O re
 const PREFETCH_MIN_BYTES = 8 * 1024 * 1024; // floor; a cache below 8 MB is clamped to its own size instead
 const DEFAULT_CACHE_BYTES = 50 * 1024 * 1024;
 
-function isTextPath(path) {
+export function isTextPath(path) {
   const dot = path.lastIndexOf(".");
 
   if (dot < 0) {
@@ -66,7 +66,7 @@ function isDataJsonPath(path) {
 }
 
 // Plugin-internal files (icon packs, fonts) are read on demand, never at boot, and a plugin can bundle tens of thousands, so bulk skips them.
-function isPluginAsset(path) {
+export function isPluginAsset(path) {
   return (
     /^\.obsidian\/plugins\/[^/]+\//.test(path) &&
     !isPriorityPath(path) &&
@@ -169,7 +169,7 @@ function selectPrefetchTargets(tree, totalBudget) {
   return { priority, bulk };
 }
 
-async function fetchBatch(vaultId, paths) {
+export async function fetchBatch(vaultId, paths) {
   const res = await fetch("/api/fs/batch-read", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
