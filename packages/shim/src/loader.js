@@ -33,6 +33,8 @@ import {
 // __IGNIS_VERSION__ (semver) and __IGNIS_BUILD__ are replaced at build time.
 window.__ignis = { version: __IGNIS_VERSION__, build: __IGNIS_BUILD__ };
 window.__ignis_registerUI = registerUI;
+// local patch 0005: the page says it is Ignis, so a CSS snippet can style it apart from desktop (html.is-ignis)
+document.documentElement.classList.add("is-ignis");
 
 installDiagnostics(); // local patch 0003: errors, plugin load times, stalls, memory and crashes to the server's log
 requestPersistentStorage(); // local patch 0004: keep the note index from being cleared on phones
