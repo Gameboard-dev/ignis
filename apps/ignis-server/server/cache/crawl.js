@@ -134,6 +134,7 @@ function buildResponse(vaultId, vaultPath, tree, etag) {
     virtualPlugins: getVirtualPluginsForVault(vaultId, getVersion()),
     settings: {
       contentCacheBytes: settings.get("contentCacheBytes"),
+      persistentCacheBytes: settings.get("persistentCacheBytes"),
       inputCacheBytes: settings.get("inputCacheBytes"),
       inputCacheTtlMs: settings.get("inputCacheTtlMs"),
       directFetchHosts: settings.get("directFetchHosts"),

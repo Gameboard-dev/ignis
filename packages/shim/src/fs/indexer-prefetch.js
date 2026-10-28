@@ -1,5 +1,9 @@
 // Pre-fetches vault file contents into the content cache before Obsidian boots, so its startup reads hit the cache instead of the network.
 // The priority slice is awaited and gates boot; the bulk slice streams afterward without blocking it.
+// Local patch 0004: .obsidian files kept in the browser from an earlier visit (persistent-cache.js) are taken from
+// there while unchanged, and those fetched are kept.
+
+import { persistentCache } from "./persistent-cache.js";
 
 const TEXT_EXTENSIONS = new Set([
   ".md",
@@ -116,7 +120,7 @@ function collectSlice(entries, predicate, perFileCap, budget, label) {
       continue;
     }
 
-    files.push({ path, size });
+    files.push({ path, size, mtime: entry.mtime });
     bytes += size;
   }
 
@@ -203,16 +207,34 @@ async function runBatches(vaultId, slice, contentCache, label, onProgress) {
   const t0 = Date.now();
   let cached = 0;
   let received = 0;
+  let kept = 0;
 
   // Report the total up front so the splash shows the target before the first batch lands.
   if (onProgress) {
     onProgress(0, slice.bytes);
   }
 
+  // Local patch 0004: unchanged files kept from an earlier visit need no request
+  const byPath = new Map(slice.files.map((f) => [f.path, f]));
+  const fromKept = await Promise.all(slice.files.map(async (f) => {
+    const before = contentCache.pathUpdates(f.path);
+    const data = await persistentCache.get(f.path, f).catch(() => null);
+
+    return data !== null && contentCache.setFromServer(f.path, data, before);
+  }));
+  const toFetch = slice.files.filter((f, i) => !fromKept[i]);
+  kept = slice.files.length - toFetch.length;
+  cached += kept;
+
+  if (onProgress && kept) {
+    received += slice.files.reduce((n, f, i) => n + (fromKept[i] ? f.size : 0), 0);
+    onProgress(received, slice.bytes);
+  }
+
   const batches = [];
 
-  for (let i = 0; i < slice.files.length; i += BATCH_SIZE) {
-    batches.push(slice.files.slice(i, i + BATCH_SIZE));
+  for (let i = 0; i < toFetch.length; i += BATCH_SIZE) {
+    batches.push(toFetch.slice(i, i + BATCH_SIZE));
   }
 
   let cursor = 0;
@@ -243,6 +265,7 @@ async function runBatches(vaultId, slice, contentCache, label, onProgress) {
           contentCache.setFromServer(path, content, pathUpdatesBefore.get(path))
         ) {
           cached++;
+          persistentCache.put(path, byPath.get(path), content).catch(() => {});
         }
       }
 
@@ -262,7 +285,8 @@ async function runBatches(vaultId, slice, contentCache, label, onProgress) {
   const ms = Date.now() - t0;
 
   console.log(
-    `[ignis] Prefetched ${label} ${cached}/${slice.files.length} files (${(slice.bytes / 1024).toFixed(0)} KB) in ${ms}ms`,
+    `[ignis] Prefetched ${label} ${cached}/${slice.files.length} files (${(slice.bytes / 1024).toFixed(0)} KB) in ${ms}ms`
+      + (kept ? `, ${kept} of them kept from an earlier visit` : ""),
   );
 }
 

@@ -18,6 +18,7 @@ import {
 import { wsClient } from "./ws-client.js";
 import { installIgnisApi } from "./ignis-api.js";
 import { installDiagnostics } from "./diagnostics.js";
+import { requestPersistentStorage } from "./persistent-storage.js";
 import {
   getState,
   onStateChange,
@@ -34,6 +35,7 @@ window.__ignis = { version: __IGNIS_VERSION__, build: __IGNIS_BUILD__ };
 window.__ignis_registerUI = registerUI;
 
 installDiagnostics(); // local patch 0003: errors, plugin load times, stalls, memory and crashes to the server's log
+requestPersistentStorage(); // local patch 0004: keep the note index from being cleared on phones
 
 installIgnisApi(wsClient, {
   getState,

@@ -8,6 +8,9 @@ const SETTINGS_FILE = path.join(config.dataRoot, "server-settings.json");
 
 const DEFAULTS = {
   contentCacheBytes: 50 * 1024 * 1024,
+  // Local patch 0004: .obsidian files (settings, plugins) each browser keeps between visits, at most this many bytes
+  // (0: none kept); packages/shim/src/fs/persistent-cache.js.
+  persistentCacheBytes: 100 * 1024 * 1024,
   inputCacheBytes: 200 * 1024 * 1024,
   inputCacheTtlMs: 5 * 60 * 1000,
   writeCoalesceMs: 0,

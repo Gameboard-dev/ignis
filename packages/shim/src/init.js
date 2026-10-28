@@ -18,6 +18,7 @@ import { initSpellcheckGuard } from "./guards/spellcheck-guard.js";
 import { initPopoutGuard } from "./guards/popout-guard.js";
 import { initLocalPluginsGuard } from "./guards/local-plugins-guard.js";
 import { applyDiagnosticsSetting } from "./diagnostics.js";
+import { persistentCache } from "./fs/persistent-cache.js";
 
 let bootstrapVirtualPlugins = [];
 
@@ -32,6 +33,9 @@ function applyServerSettings(s) {
   if (Number.isFinite(s.contentCacheBytes)) {
     fsShim._contentCache.setMaxSize(s.contentCacheBytes);
   }
+
+  // Local patch 0004: the size of the .obsidian files this browser keeps between visits
+  persistentCache.configure({ capBytes: s.persistentCacheBytes, vaultId: window.__currentVaultId || "" });
 
   setInputCacheLimits({ maxSize: s.inputCacheBytes, ttlMs: s.inputCacheTtlMs });
   setDirectFetchHosts(s.directFetchHosts);

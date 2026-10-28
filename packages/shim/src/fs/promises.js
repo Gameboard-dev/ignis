@@ -22,6 +22,7 @@ import { initWriteDurability, onFailure } from "./write-durability.js";
 import { createUtimes } from "./utimes.js";
 import { createReadAhead } from "./read-ahead.js";
 import { isTextPath } from "./indexer-prefetch.js";
+import { persistentCache } from "./persistent-cache.js";
 
 export function createFsPromises(metadataCache, contentCache, transport) {
   initWriteCoalescer(transport);
@@ -98,6 +99,7 @@ export function createFsPromises(metadataCache, contentCache, transport) {
       }
 
       let result = null;
+      let fileMeta = null; // the file's listing entry (mtime, size): local patch 0004 keeps .obsidian files by it
 
       // Check input cache for files picked via browser file dialogs.
       if (isInputCachePath(path)) {
@@ -106,6 +108,7 @@ export function createFsPromises(metadataCache, contentCache, transport) {
 
       if (result === null) {
         const meta = metadataCache.get(resolved);
+        fileMeta = meta && meta.type === "file" ? meta : null;
 
         if (meta && meta.type === "directory") {
           const e = new Error("EISDIR: illegal operation on a directory, read");
@@ -141,14 +144,25 @@ export function createFsPromises(metadataCache, contentCache, transport) {
         }
 
         const pathUpdatesBefore = contentCache.pathUpdates(resolved);
+        // Local patch 0004: a copy kept from an earlier visit, while its mtime and size still match the listing
+        const keep = fileMeta && !redirected;
+        const kept = keep ? await persistentCache.get(resolved, fileMeta) : null;
 
-        try {
-          result = await transport.readFile(resolved, encoding);
-        } catch (e) {
-          if (redirected && e.code === "ENOENT") {
-            result = await transport.readFile(path, encoding);
-          } else {
-            throw e;
+        if (kept !== null) {
+          result = kept;
+        } else {
+          try {
+            result = await transport.readFile(resolved, encoding);
+          } catch (e) {
+            if (redirected && e.code === "ENOENT") {
+              result = await transport.readFile(path, encoding);
+            } else {
+              throw e;
+            }
+          }
+
+          if (keep) {
+            persistentCache.put(resolved, fileMeta, result).catch(() => {});
           }
         }
 

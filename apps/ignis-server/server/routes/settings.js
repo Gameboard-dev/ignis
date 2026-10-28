@@ -8,6 +8,7 @@ const router = express.Router();
 
 const NUMBER_KEYS = [
   "contentCacheBytes",
+  "persistentCacheBytes",
   "inputCacheBytes",
   "inputCacheTtlMs",
   "writeCoalesceMs",
@@ -15,6 +16,8 @@ const NUMBER_KEYS = [
 ];
 const LIST_KEYS = ["proxyAllowlist", "directFetchHosts", "trustedVaults"];
 
+// Local patch 0004: a browser's kept files stay well within a phone's storage
+const MAX_PERSISTENT_CACHE_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_RULE_SETS = 64;
 const MAX_PATTERNS_PER_SET = 200;
 const MAX_PATTERN_LENGTH = 256;
@@ -59,6 +62,10 @@ function validate(body) {
 
     if (!Number.isInteger(n) || n < 0) {
       throw new Error(`${key} must be a non-negative integer`);
+    }
+
+    if (key === "persistentCacheBytes" && n > MAX_PERSISTENT_CACHE_BYTES) {
+      throw new Error(`persistentCacheBytes must be between 0 and ${MAX_PERSISTENT_CACHE_BYTES}`);
     }
 
     if (key === "maxBodyBytes" && (n < 1 || n > settings.MAX_BODY_BACKSTOP)) {
