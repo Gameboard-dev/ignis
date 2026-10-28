@@ -1,3 +1,18 @@
+> [!NOTE]
+> **This is a patched Ignis 0.8.18** (`v0.8.18+obsidian.1.14.4`) for use with
+> [Ignis Control](https://github.com/Gameboard-dev/ignis-control), which runs Ignis sandboxed on Windows behind a
+> Cloudflare Tunnel. It is upstream's history with six changes on top, one commit each:
+>
+> 1. **Local plugins guard:** plugins listed in `.obsidian/ignis-disabled-plugins.json` stay off in Ignis, desktop's plugin switches are followed live, and Ignis keeps its own `workspace-ignis.json`.
+> 2. **Listen host:** `HOST` picks the address the server listens on.
+> 3. **Diagnostics:** failed requests are logged with their reason and file; browser tabs report errors (with the plugin on the stack), plugin load times, stalls, memory and crashes to the log.
+> 4. **Mobile:** the browser is asked to keep the site's storage, and unchanged `.obsidian` files are kept in the browser between visits (`persistentCacheBytes`).
+> 5. **Startup:** the two browser bundles are built minified, with readable copies kept outside what the server serves.
+> 6. **Relay:** a same-origin relay, `/relay/<service>/…`, to desktop services through the named pipe named in `IGNIS_LOCAL_RELAY`.
+>
+> Like upstream, it is licensed under the GNU Affero General Public License 3.0 or later ([LICENSE](LICENSE), unchanged).
+> Upstream: [Nystik-gh/ignis](https://github.com/Nystik-gh/ignis). The rest of this README is upstream's.
+
 <section>
   <p align="center">
       <img src="images/ignis.png" alt="Ignis logo" width="200" height="200">
