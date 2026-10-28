@@ -56,6 +56,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// local patch 0006: the relay to services on this computer, before the body parsers and compression (it streams)
+app.use("/relay", require("./routes/local-relay").localRelay({ originAllowlist: settings.get("wsOrigins") }));
+
 app.use(express.json({ limit: settings.MAX_BODY_BACKSTOP }));
 app.use(compression());
 
