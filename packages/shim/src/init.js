@@ -16,6 +16,7 @@ import { initNativeMenuGuard } from "./guards/native-menu-guard.js";
 import { initSettingsWindowGuard } from "./guards/settings-window-guard.js";
 import { initSpellcheckGuard } from "./guards/spellcheck-guard.js";
 import { initPopoutGuard } from "./guards/popout-guard.js";
+import { initLocalPluginsGuard } from "./guards/local-plugins-guard.js";
 
 let bootstrapVirtualPlugins = [];
 
@@ -264,6 +265,7 @@ function resolveWorkspaceAndAppearance() {
   initNativeMenuGuard();
   initSettingsWindowGuard();
   initSpellcheckGuard();
+  initLocalPluginsGuard();
 }
 
 export function initialize() {
