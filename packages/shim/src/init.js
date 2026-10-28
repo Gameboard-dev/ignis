@@ -17,6 +17,7 @@ import { initSettingsWindowGuard } from "./guards/settings-window-guard.js";
 import { initSpellcheckGuard } from "./guards/spellcheck-guard.js";
 import { initPopoutGuard } from "./guards/popout-guard.js";
 import { initLocalPluginsGuard } from "./guards/local-plugins-guard.js";
+import { applyDiagnosticsSetting } from "./diagnostics.js";
 
 let bootstrapVirtualPlugins = [];
 
@@ -265,7 +266,24 @@ function resolveWorkspaceAndAppearance() {
   initNativeMenuGuard();
   initSettingsWindowGuard();
   initSpellcheckGuard();
+  initLocalGuards();
+}
+
+// Local patches 0001 and 0003: the plugin guard (which plugins stay off, the tab's own workspace file) and the tab
+// diagnostics switch. Set up as soon as the vault's tree is known, not after the priority prefetch: index.html starts
+// Obsidian after at most 3 s even when the prefetch is still running (on a 4 GB Android phone it was), and Obsidian
+// then read community-plugins.json and workspace.json before the guard existed, so plugins on the off list ran in
+// the tab (2026-10-27). Reading the two small files costs one request each.
+let localGuardsReady = false;
+
+function initLocalGuards() {
+  if (localGuardsReady) {
+    return;
+  }
+
+  localGuardsReady = true;
   initLocalPluginsGuard();
+  applyDiagnosticsSetting();
 }
 
 export function initialize() {
@@ -281,6 +299,7 @@ export function initialize() {
     applyCoreSyncGuard(bootstrap.plugins);
     bootstrapVirtualPlugins = bootstrap.virtualPlugins || [];
     applyServerSettings(bootstrap.settings);
+    initLocalGuards(); // before Obsidian can start (see initLocalGuards)
 
     // Warm the caches before Obsidian boots.
     // The priority slice (configs and plugin entry files) resolves window.__ignisBootReady, which the index.html injector waits on before appending Obsidian's scripts, so Obsidian's early reads hit the cache.

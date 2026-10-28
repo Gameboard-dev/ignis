@@ -7,7 +7,7 @@ const {
   toVaultRel,
   fromVaultRel,
 } = require("./path-utils");
-const { sanitizeError } = require("./errors");
+const { sanitizeError, requestContext } = require("./errors");
 const { creationTime } = require("./file-times");
 
 module.exports = {
@@ -19,5 +19,6 @@ module.exports = {
   toVaultRel,
   fromVaultRel,
   sanitizeError,
+  requestContext,
   creationTime,
 };

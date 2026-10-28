@@ -17,6 +17,7 @@ import {
 } from "./virtual-plugin-loader.js";
 import { wsClient } from "./ws-client.js";
 import { installIgnisApi } from "./ignis-api.js";
+import { installDiagnostics } from "./diagnostics.js";
 import {
   getState,
   onStateChange,
@@ -31,6 +32,8 @@ import {
 // __IGNIS_VERSION__ (semver) and __IGNIS_BUILD__ are replaced at build time.
 window.__ignis = { version: __IGNIS_VERSION__, build: __IGNIS_BUILD__ };
 window.__ignis_registerUI = registerUI;
+
+installDiagnostics(); // local patch 0003: errors, plugin load times, stalls, memory and crashes to the server's log
 
 installIgnisApi(wsClient, {
   getState,

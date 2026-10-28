@@ -10,6 +10,7 @@ const {
   resolveVaultPath,
   toVaultRel,
   sanitizeError,
+  requestContext,
   creationTime,
 } = require("@ignis/server-core");
 const {
@@ -569,9 +570,15 @@ router.post("/batch-read", async (req, res) => {
 
         const data = await fs.promises.readFile(resolved, "utf-8");
         files[relPath] = data;
-      } catch {
-        // Skip unreadable files silently. The client falls back to a
+      } catch (e) {
+        // Skip unreadable files. The client falls back to a
         // normal readFile when a path isn't in the response.
+        // Local patch 0003: noted for the server's log (the request logger prints them).
+        const store = requestContext.getStore();
+
+        if (store) {
+          (store.skipped ||= []).push(`${relPath} (${e.code || e.message})`);
+        }
       }
     }),
   );

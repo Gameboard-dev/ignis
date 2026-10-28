@@ -11,6 +11,7 @@ const {
   watcher,
   writeCoalescer,
   resolveVaultPath,
+  requestContext,
 } = require("@ignis/server-core");
 const {
   BRIDGE_PLUGIN_ID,
@@ -59,30 +60,154 @@ app.use(express.json({ limit: settings.MAX_BODY_BACKSTOP }));
 app.use(compression());
 
 // logger middleware
+//
+// Local patch (Ignis Control, 2026-10-27; patches/0003-diagnostics.patch): a failed request is logged with its
+// reason (the error's code and message, recorded by sanitizeError in requestContext, or the JSON error the route
+// sent) and its full, decoded path; batch-read lists the files it skipped and why. LOG_REQUESTS=errors logs only
+// failures, partial batch-reads and requests slower than SLOW_MS; NO_COLOR=1 leaves out the colour codes.
+const LOG_ERRORS_ONLY = process.env.LOG_REQUESTS === "errors";
+const PLAIN = Boolean(process.env.NO_COLOR);
+const SLOW_MS = 2000;
+
+function readableUrl(url) {
+  try {
+    return decodeURIComponent(url.replace(/\+/g, " "));
+  } catch {
+    return url;
+  }
+}
+
+function oneLine(s, max = 300) {
+  const t = String(s).replace(/\p{Cc}+/gu, " "); // control characters: one event, one line
+  return t.length > max ? t.slice(0, max) + "..." : t;
+}
+
 app.use((req, res, next) => {
   const start = Date.now();
   const origEnd = res.end;
+  const origJson = res.json;
+  const store = {};
+
+  res.json = function (body) {
+    if (res.statusCode >= 400 && body && typeof body === "object") {
+      store.body = body;
+    }
+
+    return origJson.call(this, body);
+  };
 
   res.end = function (...args) {
     const duration = Date.now() - start;
     const status = res.statusCode;
+    const skipped = store.skipped || [];
+    const failed = status >= 400;
 
-    const color =
-      status >= 500 ? ANSI_RED : status >= 400 ? ANSI_YELLOW : ANSI_GREEN;
+    if (!LOG_ERRORS_ONLY || failed || skipped.length || duration >= SLOW_MS) {
+      const color = PLAIN ? "" : status >= 500 ? ANSI_RED : status >= 400 ? ANSI_YELLOW : ANSI_GREEN;
+      const reset = PLAIN ? "" : ANSI_RESET;
+      let line = `${color}${req.method} ${status}${reset} ${oneLine(readableUrl(req.originalUrl), failed ? 300 : 120)} (${duration}ms)`;
 
-    const path =
-      req.originalUrl.length > 80
-        ? req.originalUrl.slice(0, 80) + "..."
-        : req.originalUrl;
+      if (failed) {
+        const e = store.error;
+        const message = e ? String(e.message || e) : "";
+        const code = e ? e.code || e.name || "error" : "";
+        const why = e
+          ? message.startsWith(code) ? message : `${code}: ${message}`
+          : store.body?.error || store.body?.message || "";
 
-    console.log(
-      `${color}${req.method} ${status}${ANSI_RESET} ${path} (${duration}ms)`,
-    );
+        if (why) {
+          line += ` -- ${oneLine(why)}`;
+        }
+      }
+
+      if (skipped.length) {
+        line += ` -- skipped ${skipped.length}: ${oneLine(skipped.slice(0, 5).join(", "))}`;
+      }
+
+      console.log(line);
+    }
 
     origEnd.apply(this, args);
   };
 
-  next();
+  requestContext.run(store, next);
+});
+
+// What browser tabs report about themselves (packages/shim/src/diagnostics.js, local patch 0003): one log line per
+// event, "client <session> ...". Each tab's session is introduced once with its device; at most CLIENT_BUDGET events
+// per session in CLIENT_WINDOW_MS are written, the rest counted.
+const CLIENT_BUDGET = 400;
+const CLIENT_WINDOW_MS = 5 * 60 * 1000;
+const clientSessions = new Map(); // session -> { windowStart, count, dropped, last }
+const NEW_SESSIONS_PER_MINUTE = 20;
+const SESSIONS_KEPT = 500;
+let newSessionTimes = [];
+let lastRefusalLogged = 0;
+
+app.post("/api/client-log", (req, res) => {
+  const { session, device, events } = req.body || {};
+
+  if (typeof session !== "string" || !/^[a-z0-9]{1,12}$/.test(session) || !Array.isArray(events)) {
+    return res.status(400).json({ error: "expected { session, device, events: [] }" });
+  }
+
+  const now = Date.now();
+  let s = clientSessions.get(session);
+
+  if (!s) {
+    // At most NEW_SESSIONS_PER_MINUTE new sessions a minute, and SESSIONS_KEPT in all: a client cannot flood the log
+    // by making up new session ids (each one's own budget is below)
+    newSessionTimes = newSessionTimes.filter((t) => now - t < 60000);
+
+    for (const [id, old] of clientSessions) {
+      if (now - old.last > 3600 * 1000) {
+        clientSessions.delete(id); // quiet for an hour: forgotten
+      }
+    }
+
+    if (newSessionTimes.length >= NEW_SESSIONS_PER_MINUTE || clientSessions.size >= SESSIONS_KEPT) {
+      if (now - lastRefusalLogged > 60000) {
+        lastRefusalLogged = now;
+        console.log("client-log: too many new sessions; reports from new pages refused for now");
+      }
+
+      return res.status(429).end();
+    }
+
+    newSessionTimes.push(now);
+    s = { windowStart: now, count: 0, dropped: 0, last: now };
+    clientSessions.set(session, s);
+    console.log(`client ${session}: new page on ${oneLine(device || "an unknown device", 160)}`);
+  }
+
+  s.last = now;
+
+  if (now - s.windowStart > CLIENT_WINDOW_MS) {
+    if (s.dropped) {
+      console.log(`client ${session}: ${s.dropped} more events in the last ${CLIENT_WINDOW_MS / 60000} minutes were not logged`);
+    }
+
+    s.windowStart = now;
+    s.count = 0;
+    s.dropped = 0;
+  }
+
+  for (const e of events.slice(0, 100)) {
+    if (s.count >= CLIENT_BUDGET) {
+      s.dropped += 1;
+      continue;
+    }
+
+    s.count += 1;
+    const level = ["error", "warn", "info"].includes(e?.level) ? e.level.toUpperCase() : "INFO";
+    const plugin = typeof e?.plugin === "string" && e.plugin ? ` [plugin ${oneLine(e.plugin, 60)}]` : "";
+    const stack = typeof e?.stack === "string" && e.stack ? ` -- stack: ${oneLine(e.stack, 400)}` : "";
+    const t = Number.isFinite(e?.t) ? ` +${e.t}s` : "";
+
+    console.log(`client ${session}${t} ${level} ${oneLine(e?.kind || "event", 30)}${plugin}: ${oneLine(e?.msg || "", 600)}${stack}`);
+  }
+
+  res.status(204).end();
 });
 
 const fsRoutes = require("./routes/fs");

@@ -15,6 +15,7 @@ import {
   registerWriteTransform,
 } from "../fs/transforms.js";
 import { fsShim } from "../fs/index.js";
+import { report } from "../diagnostics.js";
 
 const LIST_PATH = ".obsidian/community-plugins.json";
 const DISABLED_PATH = ".obsidian/ignis-disabled-plugins.json";
@@ -67,6 +68,8 @@ async function applyEnabledList() {
     }
   }
 
+  // A copy: disabling a plugin removes it from the set being iterated
+  // oxlint-disable-next-line unicorn/no-useless-spread
   for (const id of [...plugins.enabledPlugins]) {
     if (!want.has(id)) {
       console.log(`[ignis] Local plugins guard: switching off ${id} (switched off elsewhere)`);
@@ -99,18 +102,41 @@ export function initLocalPluginsGuard() {
 
   followEnabledList();
 
-  const disabled = readIds(DISABLED_PATH);
+  // Local patch 0003: the guard says what it did (it used to fail silently when the list could not be read)
+  let disabled = null;
+  let why = "";
+
+  try {
+    disabled = parseIds(fsShim.readFileSync(DISABLED_PATH, "utf-8"));
+    why = disabled ? "" : "not a JSON array of plugin ids";
+  } catch (e) {
+    why = `${e.code || e.name || "error"}: ${e.message || e}`;
+  }
 
   if (!disabled || disabled.length === 0) {
+    report("guard", why ? "error" : "info", why
+      ? `${DISABLED_PATH} could not be used (${why}): every plugin switched on on desktop runs in this tab`
+      : `${DISABLED_PATH} is empty: no plugin is kept off`);
     return;
   }
+
+  report("guard", "info", `kept off in this tab: ${disabled.join(", ")}`);
 
   const off = new Set(disabled);
   // Set while the write transform reads the file as stored, so the read transform passes it through unfiltered.
   let raw = false;
 
+  let told = false;
+
   registerReadTransform(LIST_PATH, (data) => {
     const ids = raw ? null : parseIds(data);
+
+    if (ids && !told) {
+      told = true;
+      const removed = ids.filter((id) => off.has(id));
+      report("guard", "info", `${LIST_PATH} read: ${ids.length} plugins switched on, ${removed.length} left out here`
+        + (removed.length ? ` (${removed.join(", ")})` : ""));
+    }
 
     return ids ? JSON.stringify(ids.filter((id) => !off.has(id)), null, 2) : data;
   });
