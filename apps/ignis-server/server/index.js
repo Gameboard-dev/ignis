@@ -180,8 +180,10 @@ app.use(express.static(path.join(REPO_ROOT, "packages", "shim", "dist")));
 
 app.use(express.static(config.obsidianAssetsPath));
 
-const server = app.listen(config.port, async () => {
-  console.log(`[ignis] Server running on http://localhost:${config.port}`);
+// Local patch (Ignis Control, 2026-10-23; patches/0002-listen-host.patch): HOST picks the address to listen on,
+// e.g. 127.0.0.1 so only this machine can connect. Unset, Ignis listens on every interface, as upstream does.
+const server = app.listen(config.port, process.env.HOST || undefined, async () => {
+  console.log(`[ignis] Server running on http://${process.env.HOST || "localhost"}:${config.port}`);
   console.log(`[ignis] Vault root: ${config.vaultRoot}`);
   console.log(`[ignis] Vaults: ${Object.keys(config.vaults).join(", ")}`);
 
