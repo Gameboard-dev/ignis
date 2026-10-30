@@ -23,7 +23,9 @@ plugin in the page ── /relay/<service>/<path> ──> Ignis server ── na
 - **Path on the pipe:** `/<service>/<path>`, with the query string.
 - **Request headers passed:** `accept`, `accept-language`, `content-type`, `content-length`, `last-event-id`,
   `cache-control`, `user-agent`. For the service `latex` only, also `cf-access-jwt-assertion` (Cloudflare Access's
-  token). Cookies, `Authorization` and every other header are not passed. `Host` is set to `relay` and `Connection`
+  token). For the service `quarry` only, also `authorization` (Quarry's own service token, `Bearer <token>`, which its
+  service checks on every request since 2026-10-30). Cookies, `Authorization` to any other service and every other
+  header are not passed. `Host` is set to `relay` and `Connection`
   to `close`.
 - **Answer headers:** all of the pipe's answer headers except `Connection`. Headers are flushed at once, so a
   server-sent event stream starts without delay.

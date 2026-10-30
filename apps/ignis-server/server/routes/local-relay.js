@@ -14,12 +14,15 @@ const SERVICE = /^[a-z][a-z0-9-]{0,31}$/;
 const FORWARDED = new Set(["accept", "accept-language", "content-type", "content-length", "last-event-id", "cache-control", "user-agent"]);
 // the LaTeX build alone gets Cloudflare Access's token, which the launcher verifies before it builds (2026-10-28)
 const TOKEN_FOR = new Set(["latex"]);
+// Quarry's service checks a token of its own, `Authorization: Bearer` (2026-10-30): passed on to it and to no other
+// service; every other credential of the browser stays here
+const AUTHORIZATION_FOR = new Set(["quarry"]);
 
 function forwardedHeaders(headers, service = "") {
   const out = {};
   for (const [k, v] of Object.entries(headers || {})) {
     const key = k.toLowerCase();
-    if (FORWARDED.has(key) || (key === "cf-access-jwt-assertion" && TOKEN_FOR.has(service))) out[key] = v;
+    if (FORWARDED.has(key) || (key === "cf-access-jwt-assertion" && TOKEN_FOR.has(service)) || (key === "authorization" && AUTHORIZATION_FOR.has(service))) out[key] = v;
   }
   out.host = "relay";
   out.connection = "close";

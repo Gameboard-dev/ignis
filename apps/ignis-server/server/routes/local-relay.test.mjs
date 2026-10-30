@@ -90,5 +90,19 @@ describe("local relay", () => {
 
   it("forwards only the headers a service needs", () => {
     expect(forwardedHeaders({ Cookie: "a", Authorization: "b", "cf-access-jwt-assertion": "c", "Content-Type": "x", "Last-Event-ID": "4" })).toEqual({ "content-type": "x", "last-event-id": "4", host: "relay", connection: "close" });
+    // each credential reaches only the service that checks it: Access's token the LaTeX build, the bearer token Quarry
+    const all = { Cookie: "a", Authorization: "Bearer t", "cf-access-jwt-assertion": "c" };
+    expect(forwardedHeaders(all, "quarry")).toEqual({ authorization: "Bearer t", host: "relay", connection: "close" });
+    expect(forwardedHeaders(all, "latex")).toEqual({ "cf-access-jwt-assertion": "c", host: "relay", connection: "close" });
+    expect(forwardedHeaders(all, "other")).toEqual({ host: "relay", connection: "close" });
+  });
+
+  it("passes Quarry's token through the pipe, and no other service's", async () => {
+    const { pipe, seen } = await fakeLauncher((req, res) => res.end("x"));
+    const base = await ignis(pipe);
+    await fetch(`${base}/relay/quarry/health`, { headers: { authorization: "Bearer abc" } });
+    await fetch(`${base}/relay/latex/build`, { headers: { authorization: "Bearer abc" } });
+    expect(seen[0].headers.authorization).toBe("Bearer abc");
+    expect(seen[1].headers.authorization).toBeUndefined();
   });
 });
